@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: labpassword
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: labpassword
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Service provider trusting Keycloak
+  saml-sp:
+    image: ghcr.io/beryju/saml-test-sp
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./certs:/certs:ro
+    environment:
+      SP_ENTITY_ID: saml-test-sp
+      SP_ROOT_URL: https://sp.lab:9009
+      SP_SSL_CERT: /certs/sp.crt
+      SP_SSL_KEY: /certs/sp.key
+      SP_METADATA_URL: http://keycloak:8080/realms/lab/protocol/saml/descriptor
+    depends_on:
+      - keycloak
+    restart: unless-stopped
+
+  # Service provider trusting ADFS
+  saml-sp-adfs:
+    image: ghcr.io/beryju/saml-test-sp
+    ports:
+      - "9010:9009"
+    volumes:
+      - ./certs:/certs:ro
+    extra_hosts:
+      - "adfs.corp.lab:192.168.56.10"
+    environment:
+      SP_ENTITY_ID: saml-test-sp
+      SP_ROOT_URL: https://sp.lab:9010
+      SP_SSL_CERT: /certs/sp.crt
+      SP_SSL_KEY: /certs/sp.key
+      SP_METADATA_URL: https://adfs.corp.lab/FederationMetadata/2007-06/FederationMetadata.xml
+      SSL_CERT_FILE: /certs/adfs-tls.pem
+    restart: unless-stopped
+
+volumes:
+  pgdata:
